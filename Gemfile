@@ -36,8 +36,8 @@ gem "bootsnap", require: false
 gem "rack-cors"
 
 gem 'devise'
-gem 'devise-jwt'
 gem 'devise-two-factor'
+gem 'jwt'
 gem 'jsonapi-serializer'
 gem "rqrcode"
 

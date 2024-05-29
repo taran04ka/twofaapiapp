@@ -5,13 +5,9 @@ class Users::SessionsController < Devise::SessionsController
   respond_to :json
 
   def create
-    # Authenticate user with just email and password.
     self.resource = warden.authenticate!(auth_options.merge(strategy: :password_authenticatable))
     if resource && resource.active_for_authentication?
-      # If the user has 2FA enabled
       if resource.otp_required_for_login
-        # Store the user ID temporarily. We're not saving the password in the session for security reasons.
-        # Generate a signed token for the user ID.
         verifier = Rails.application.message_verifier(:otp_session)
         token = verifier.generate(resource.id)
 
@@ -29,17 +25,20 @@ class Users::SessionsController < Devise::SessionsController
         # If 2FA is not required, log the user in
         sign_in(resource_name, resource)
 
-        # jwt_token = JWT.encode({
-        #                          jti: SecureRandom.uuid,
-        #                          sub: resource.id,
-        #                          scp: "user",
-        #                          aud: nil,
-        #                          iat: Time.now.to_i,
-        #                          exp: 30.minutes.from_now.to_i
-        #                        }, Rails.application.credentials.dig(:devise_jwt_secret_key), 'HS256')
+        jwt_secret = SecureRandom.uuid
+        resource.jwt_secret = jwt_secret
+        resource.save!
+        jwt_token = JWT.encode({
+                                 jti: jwt_secret,
+                                 sub: resource.id,
+                                 scp: "user",
+                                 aud: nil,
+                                 iat: Time.now.to_i,
+                                 exp: 30.minutes.from_now.to_i
+                               }, Rails.application.credentials.dig(:jwt_secret_key), 'HS256')
 
         yield resource if block_given?
-        response.headers['Authorization'] = nil
+        response.headers['Authorization'] = "Bearer #{jwt_token}"
         render json: {
           status: {
             code: 200, message: 'Logged in successfully.',
@@ -67,20 +66,30 @@ class Users::SessionsController < Devise::SessionsController
   end
   def respond_to_on_destroy
     if request.headers['Authorization'].present?
-      jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.devise_jwt_secret_key!).first
+      jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
+      if jwt_payload[:exp] < Time.now.to_i
+        render json: {
+          status: 401,
+          message: "JWT token is expired."
+        }, status: :unauthorized
+      end
       current_user = User.find(jwt_payload['sub'])
     end
 
     if current_user
-      # JWT::Revoker.revoke(
-      #   decoded_token: current_user.jwt_payload,
-      #   user: current_user
-      # )
-
-      render json: {
-        status: 200,
-        message: 'Logged out successfully.'
-      }, status: :ok
+      if current_user.jwt_secret == jwt_payload['jti']
+        current_user.jwt_secret = nil
+        current_user.save!
+        render json: {
+          status: 200,
+          message: 'Logged out successfully.'
+        }, status: :ok
+      else
+        render json: {
+          status: 401,
+          message: "JWT token is invalid."
+        }, status: :unauthorized
+      end
     else
       render json: {
         status: 401,
@@ -88,29 +97,4 @@ class Users::SessionsController < Devise::SessionsController
       }, status: :unauthorized
     end
   end
-
-
-  # before_action :configure_sign_in_params, only: [:create]
-
-  # GET /resource/sign_in
-  # def new
-  #   super
-  # end
-
-  # POST /resource/sign_in
-  # def create
-  #   super
-  # end
-
-  # DELETE /resource/sign_out
-  # def destroy
-  #   super
-  # end
-
-  # protected
-
-  # If you have extra params to permit, append them to the sanitizer.
-  # def configure_sign_in_params
-  #   devise_parameter_sanitizer.permit(:sign_in, keys: [:attribute])
-  # end
 end
