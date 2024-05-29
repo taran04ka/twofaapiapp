@@ -12,8 +12,12 @@ class UsersController < ApplicationController
     if user.validate_and_consume_otp!(request_body['otp_attempt'])
       sign_in(:user, user)
 
+      jwt_secret = SecureRandom.uuid
+      user.jwt_secret = jwt_secret
+      user.save!
+
       jwt_token = JWT.encode({
-                               jti: SecureRandom.uuid,
+                               jti: jwt_secret,
                                sub: user.id,
                                scp: "user",
                                aud: nil,
@@ -39,7 +43,7 @@ class UsersController < ApplicationController
   def enable_otp_show_qr
     if request.headers['Authorization'].present?
       jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.dig(:jwt_secret_key), algorithm: 'HS256').first
-      if jwt_payload[:exp] < Time.now.to_i
+      if jwt_payload['exp'] < Time.now.to_i
         render json: {
           status: 401,
           message: "JWT token is expired."
@@ -84,7 +88,7 @@ class UsersController < ApplicationController
   def enable_otp_verify
     if request.headers['Authorization'].present?
       jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
-      if jwt_payload[:exp] < Time.now.to_i
+      if jwt_payload['exp'] < Time.now.to_i
         render json: {
           status: 401,
           message: "JWT token is expired."
@@ -128,7 +132,7 @@ class UsersController < ApplicationController
   def disable_otp_verify
     if request.headers['Authorization'].present?
       jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
-      if jwt_payload[:exp] < Time.now.to_i
+      if jwt_payload['exp'] < Time.now.to_i
         render json: {
           status: 401,
           message: "JWT token is expired."

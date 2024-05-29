@@ -67,7 +67,7 @@ class Users::SessionsController < Devise::SessionsController
   def respond_to_on_destroy
     if request.headers['Authorization'].present?
       jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
-      if jwt_payload[:exp] < Time.now.to_i
+      if jwt_payload['exp'] < Time.now.to_i
         render json: {
           status: 401,
           message: "JWT token is expired."
