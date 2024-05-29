@@ -10,7 +10,7 @@
 # Many of these configuration options can be set straight in your model.
 Devise.setup do |config|
   config.warden do |manager|
-    manager.default_strategies(:scope => :user).unshift :two_factor_authenticatable
+    manager.default_strategies(:scope => :user).unshift :password_authenticatable, :two_factor_authenticatable
   end
 
   # The secret key used by Devise. Devise uses this key to generate
@@ -318,10 +318,11 @@ Devise.setup do |config|
   config.jwt do |jwt|
     jwt.secret = Rails.application.credentials.devise_jwt_secret_key!
     jwt.dispatch_requests = [
-      ['POST', %r{^/verify_otp$}]
+      ['POST', %r{^/users/sign_in$}],
+      ['POST', %r{^/users/otp$}]
     ]
     jwt.revocation_requests = [
-      ['DELETE', %r{^/logout$}]
+      ['DELETE', %r{^/users/sign_out$}]
     ]
     jwt.expiration_time = 30.minutes.to_i
   end
