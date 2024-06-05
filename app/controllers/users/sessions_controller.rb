@@ -66,35 +66,40 @@ class Users::SessionsController < Devise::SessionsController
   end
   def respond_to_on_destroy
     if request.headers['Authorization'].present?
-      jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
-      if jwt_payload['exp'] < Time.now.to_i
+      begin
+        jwt_payload = JWT.decode(request.headers['Authorization'].split(' ').last, Rails.application.credentials.jwt_secret_key!).first
+        current_user = User.find(jwt_payload['sub'])
+        if current_user
+          if current_user.jwt_secret == jwt_payload['jti']
+            current_user.jwt_secret = nil
+            current_user.save!
+            render json: {
+              status: 200,
+              message: 'Logged out successfully.'
+            }, status: :ok
+          else
+            render json: {
+              status: 401,
+              message: "JWT token is invalid."
+            }, status: :unauthorized
+          end
+        else
+          render json: {
+            status: 401,
+            message: "Couldn't find an active session."
+          }, status: :unauthorized
+        end
+      rescue JWT::ExpiredSignature
         render json: {
           status: 401,
           message: "JWT token is expired."
         }, status: :unauthorized
-      end
-      current_user = User.find(jwt_payload['sub'])
-    end
-
-    if current_user
-      if current_user.jwt_secret == jwt_payload['jti']
-        current_user.jwt_secret = nil
-        current_user.save!
-        render json: {
-          status: 200,
-          message: 'Logged out successfully.'
-        }, status: :ok
-      else
+      rescue JWT::VerificationError, JWT::DecodeError
         render json: {
           status: 401,
           message: "JWT token is invalid."
         }, status: :unauthorized
       end
-    else
-      render json: {
-        status: 401,
-        message: "Couldn't find an active session."
-      }, status: :unauthorized
     end
   end
 end
